@@ -105,14 +105,20 @@ fn config_cmake_for_ios(config: &mut Config) {
 }
 
 fn config_cmake_for_libcxx(config: &mut Config) {
-	// Force CMake to use libc++ instead of libstdc++
-	config.define("CMAKE_CXX_FLAGS", "-stdlib=libc++");
-	config.define("CMAKE_EXE_LINKER_FLAGS", "-stdlib=libc++");
-	config.define("CMAKE_SHARED_LINKER_FLAGS", "-stdlib=libc++");
+	let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
-	// Ensure we're using clang++ for consistency
-	config.define("CMAKE_CXX_COMPILER", "clang++");
-	config.define("CMAKE_C_COMPILER", "clang");
+	// Only force libc++ on platforms that need it (macOS, iOS, Android)
+	// On Linux, let the system use its default C++ stdlib
+	if target_os == "macos" || target_os == "ios" || target_os == "android" {
+		// Force CMake to use libc++ instead of libstdc++
+		config.define("CMAKE_CXX_FLAGS", "-stdlib=libc++");
+		config.define("CMAKE_EXE_LINKER_FLAGS", "-stdlib=libc++");
+		config.define("CMAKE_SHARED_LINKER_FLAGS", "-stdlib=libc++");
+
+		// Ensure we're using clang++ for consistency
+		config.define("CMAKE_CXX_COMPILER", "clang++");
+		config.define("CMAKE_C_COMPILER", "clang");
+	}
 
 	// This was causing issues on the windows runner and we don't care about documentation
 	config.define("CMAKE_DISABLE_FIND_PACKAGE_Doxygen", "TRUE");
@@ -133,7 +139,15 @@ fn build_libde265() -> PathBuf {
 
 	let dst = config.build();
 	println!("cargo:rerun-if-changed=deps/libde265");
-	println!("cargo:rustc-link-search=native={}/lib", dst.display());
+
+	// Check both lib and lib64 directories (lib64 is common on 64-bit Linux)
+	let lib_path = dst.join("lib");
+	let lib64_path = dst.join("lib64");
+	if lib64_path.exists() {
+		println!("cargo:rustc-link-search=native={}", lib64_path.display());
+	} else {
+		println!("cargo:rustc-link-search=native={}", lib_path.display());
+	}
 
 	if env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
 		println!("cargo:rustc-link-lib=static=libde265");
@@ -159,7 +173,14 @@ fn build_libheif(libde265_path: &Path) -> PathBuf {
 		config.define("CMAKE_C_FLAGS", "/DLIBDE265_STATIC_BUILD");
 		config.define("CMAKE_CXX_FLAGS", "/DLIBDE265_STATIC_BUILD");
 	} else {
-		config.define("LIBDE265_LIBRARY", libde265_path.join("lib/libde265.a"));
+		// Check both lib and lib64 directories
+		let lib64_de265 = libde265_path.join("lib64/libde265.a");
+		let lib_de265 = libde265_path.join("lib/libde265.a");
+		if lib64_de265.exists() {
+			config.define("LIBDE265_LIBRARY", lib64_de265);
+		} else {
+			config.define("LIBDE265_LIBRARY", lib_de265);
+		}
 	}
 
 	config.define("WITH_LIBDE265", "ON");
@@ -185,7 +206,16 @@ fn build_libheif(libde265_path: &Path) -> PathBuf {
 	let dst = config.build();
 
 	println!("cargo:rerun-if-changed=deps/libheif");
-	println!("cargo:rustc-link-search=native={}/lib", dst.display());
+
+	// Check both lib and lib64 directories (lib64 is common on 64-bit Linux)
+	let lib_path = dst.join("lib");
+	let lib64_path = dst.join("lib64");
+	if lib64_path.exists() {
+		println!("cargo:rustc-link-search=native={}", lib64_path.display());
+	} else {
+		println!("cargo:rustc-link-search=native={}", lib_path.display());
+	}
+
 	println!("cargo:rustc-link-lib=static=heif");
 
 	dst

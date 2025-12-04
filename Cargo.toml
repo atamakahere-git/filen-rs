@@ -13,6 +13,12 @@ members = [
 	"filen-cli",
 ]
 
+[workspace.package]
+version = "0.3.30"
+
+[workspace.metadata.crane]
+name = "filen-rs"
+
 [profile.test]
 opt-level = 3
 
